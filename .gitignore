@@ -10,9 +10,10 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
-data/chroma/
-results/*.csv
-results/*.jsonl
-results/*.md
-results/versions.json
+data/*
+!data/.gitkeep
+!data/README.md
+results/*
+!results/.gitkeep
+!results/README.md
 project-export.md

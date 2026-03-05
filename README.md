@@ -47,6 +47,8 @@ Set the same value in `.env` for persistent configuration.
 
 ## Dane (PDF)
 PDF-y źródłowe trzymaj w katalogu `data/` (np. `data/Przewodnik_po_historii_Polski_PL_internet.pdf`).  
+Katalog `data/` jest lokalny i ignorowany przez git (tak samo `data/chroma/` oraz `data/chat.db`), więc pliki wejściowe nie trafiają do repozytorium.
+Instrukcja dla danych lokalnych jest w `data/README.md`.
 Po dodaniu lub zmianie PDF uruchom ponownie krok **1) ingest**, aby przebudować/odświeżyć indeks w ChromaDB.
 
 
