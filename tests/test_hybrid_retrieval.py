@@ -153,3 +153,25 @@ def test_ensure_top_k_contains_phrase_evidence_chunk() -> None:
     final_chunks = ensure_top_k_contains_evidence(chunks, keyword_query, top_k=2)
     assert len(final_chunks) == 2
     assert has_required_evidence(final_chunks, keyword_query) is True
+
+
+def test_followup_summary_query_prefers_topic_keyword_over_summary_intent_words() -> None:
+    query = (
+        "Wróćmy do tego, co mówiłeś o Wojciechu: "
+        "podsumuj w 2 zdaniach najważniejsze informacje."
+    )
+
+    keyword_query = analyze_query_keywords(query)
+
+    assert keyword_query.main_keyword in {"wojciech", "wojciechu"}
+    assert "podsumuj" not in keyword_query.keywords
+    assert "informacje" not in keyword_query.keywords
+
+
+def test_summary_question_about_wojciech_keeps_entity_phrase_as_focus() -> None:
+    query = "Podsumuj w 2 zdaniach: Święty Wojciech – kim był i jak zginął?"
+
+    keyword_query = analyze_query_keywords(query)
+
+    assert keyword_query.phrase_norm == "swiety wojciech"
+    assert keyword_query.main_keyword == "wojciech"

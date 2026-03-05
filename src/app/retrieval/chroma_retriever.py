@@ -95,6 +95,32 @@ class ChromaRetriever:
 
         return results
 
+    def retrieve_by_chunk_ids(self, *, chunk_ids: list[str]) -> list[RetrievedChunk]:
+        if not chunk_ids:
+            return []
+
+        response = self._collection.get(
+            ids=chunk_ids,
+            include=["documents", "metadatas"],
+        )
+        ids = _first(response.get("ids"))
+        docs = _first(response.get("documents"))
+        metas = _first(response.get("metadatas"))
+
+        by_chunk_id: dict[str, RetrievedChunk] = {}
+        for raw_id, doc, meta in zip(ids, docs, metas, strict=False):
+            meta = meta or {}
+            chunk_id = str(meta.get("chunk_id", raw_id or "unknown"))
+            by_chunk_id[chunk_id] = RetrievedChunk(
+                chunk_id=chunk_id,
+                source_file=str(meta.get("source_file", "unknown")),
+                page=_to_int_or_none(meta.get("page")),
+                text=str(doc or ""),
+                score=1.0,
+            )
+
+        return [by_chunk_id[chunk_id] for chunk_id in chunk_ids if chunk_id in by_chunk_id]
+
     def list_chunks(self, *, limit: int, offset: int = 0) -> list[RetrievedChunk]:
         if limit <= 0:
             return []

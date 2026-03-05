@@ -48,16 +48,33 @@ POLISH_STOPWORDS = {
     "z",
     "za",
     "ze",
+    "wrocmy",
+    "wroc",
+    "przypomnij",
+    "podsumuj",
+    "podsumowanie",
+    "stresc",
+    "streszcz",
+    "informacje",
+    "najwazniejsze",
+    "zdaniach",
+    "tego",
+    "mowiles",
+    "mowilas",
 }
 
 GENERIC_QUERY_TERMS = {
     "dlaczego",
     "napisz",
     "opowiedz",
+    "podsumuj",
+    "podsumowanie",
     "podaj",
     "pomoz",
     "porownaj",
     "sposob",
+    "stresc",
+    "streszcz",
     "uporzadkowac",
     "wskaz",
     "wytlumacz",
@@ -434,7 +451,7 @@ def _extract_focus_entity_phrase(query: str) -> str | None:
         if not tokens:
             continue
         filtered = [token for token in tokens if _should_keep_keyword(normalize_for_match(token))]
-        if not filtered:
+        if len(filtered) < 2:
             continue
         cleaned = " ".join(filtered[:3])
         canonical = _canonical_phrase_for_text(cleaned)
