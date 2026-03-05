@@ -40,6 +40,8 @@ class AppConfig:
     def from_env(cls, env_file: str | None = ".env") -> AppConfig:
         if env_file:
             load_dotenv(env_file, override=False)
+        # Keep Chroma offline-first by default unless explicitly overridden.
+        os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
         return cls(
             db_path=Path(os.getenv("DB_PATH", "./data/chat.db")),

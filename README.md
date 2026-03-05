@@ -31,6 +31,7 @@ ollama pull nomic-embed-text
 Copy `.env.example` to `.env` and adjust as needed:
 - `DB_PATH`, `CHROMA_DIR`
 - `OLLAMA_HOST`, `MODEL_NAME`, `EMBED_MODEL`
+- `ANONYMIZED_TELEMETRY` (`False` recommended for offline-first Chroma usage)
 - `PDF_PARSER` (`pymupdf|pdfplumber|pypdf|pdfminer`, fallback to `pymupdf`)
 - `CHUNK_SIZE`, `CHUNK_OVERLAP`, `TOP_K`, `SIMILARITY_THRESHOLD`
 - `DEBUG_RETRIEVAL`, `RETRIEVAL_DEBUG_TOP_N`
@@ -43,6 +44,11 @@ WIN_HOST_IP="$(ip route | awk '/^default/ {print $3; exit}')"
 export OLLAMA_HOST="http://${WIN_HOST_IP}:11434"
 ```
 Set the same value in `.env` for persistent configuration.
+
+## Dane (PDF)
+PDF-y źródłowe trzymaj w katalogu `data/` (np. `data/Przewodnik_po_historii_Polski_PL_internet.pdf`).  
+Po dodaniu lub zmianie PDF uruchom ponownie krok **1) ingest**, aby przebudować/odświeżyć indeks w ChromaDB.
+
 
 ## Phase 1 workflow (console only)
 ```bash
