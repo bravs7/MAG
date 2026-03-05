@@ -39,6 +39,12 @@ PROPER_NOUN_ALLOWLIST = {
     "na",
     "w",
     "z",
+    "ciebie",
+    "tobie",
+    "twoje",
+    "twoj",
+    "twoja",
+    "twoim",
     "polska",
     "polski",
     "polsce",
@@ -75,6 +81,12 @@ META_INTENT_MARKERS = (
     "ustaw",
     "prosze ustaw",
     "odpowiadaj krotko",
+    "odpowiadaj normalnie",
+    "odpowiadaj szeroko",
+    "tryb normalny",
+    "tryb krotki",
+    "tryb rozszerzony",
+    "styl odpowiedzi",
     "preferencje",
     "jakie mam",
     "jakie sa moje",
@@ -90,6 +102,8 @@ META_QUERY_MARKERS = (
     "jakie sa moje preferencje",
     "jaka dlugosc odpowiedzi",
     "jaka dlugosc mam ustawiona",
+    "jaki styl odpowiedzi",
+    "jaki mam styl",
     "jakie ustawienia",
 )
 DISABLE_CHECK_QUESTION_MARKERS = (
@@ -106,6 +120,13 @@ ENABLE_CHECK_QUESTION_MARKERS = (
     "zadawaj pytania sprawdzajace",
 )
 DEFAULT_CHECK_QUESTION = "Czy to jest dla Ciebie zrozumiałe?"
+DEFAULT_ANSWER_STYLE = "normal"
+ANSWER_STYLE_VALUES = {"normal", "short", "extended"}
+STYLE_FACT_SENTENCE_CAP = {
+    "normal": 5,
+    "short": 2,
+    "extended": 8,
+}
 CHECK_QUESTION_PATTERNS = (
     re.compile(r"^czy\s+to\s+wyjasnienie\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
     re.compile(r"^czy\s+to\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
@@ -754,10 +775,20 @@ def _normalize_thread_preferences(preferences: dict[str, object] | None) -> dict
     if isinstance(raw_style_short, bool):
         style_short = raw_style_short
 
+    answer_style = DEFAULT_ANSWER_STYLE
+    raw_answer_style = payload.get("answer_style")
+    if isinstance(raw_answer_style, str):
+        normalized_style = raw_answer_style.strip().lower()
+        if normalized_style in ANSWER_STYLE_VALUES:
+            answer_style = normalized_style
+    elif style_short:
+        answer_style = "short"
+
     return {
         "max_sentences": max_sentences,
         "ask_check_question": ask_check_question,
         "style_short": style_short,
+        "answer_style": answer_style,
     }
 
 
@@ -772,9 +803,16 @@ def _handle_meta_request(
 
     updates: dict[str, object] = {}
     max_sentences = _extract_max_sentences(normalized)
+    answer_style = _extract_answer_style(normalized)
+    if answer_style is not None:
+        updates["answer_style"] = answer_style
+        updates["style_short"] = answer_style == "short"
+
     if max_sentences is not None:
         updates["max_sentences"] = max_sentences
-        updates["style_short"] = True
+        if "answer_style" not in updates:
+            updates["answer_style"] = "short"
+            updates["style_short"] = True
     elif "bez limitu" in normalized or "bez ograniczen" in normalized:
         updates["max_sentences"] = None
 
@@ -785,6 +823,8 @@ def _handle_meta_request(
 
     if "krotko" in normalized and "style_short" not in updates:
         updates["style_short"] = True
+        if "answer_style" not in updates:
+            updates["answer_style"] = "short"
 
     if not updates:
         return (
@@ -815,18 +855,22 @@ def _build_meta_update_response(
             "- Pytanie kontrolne: "
             + ("włączone." if ask else "wyłączone.")
         )
+    if "answer_style" in updates:
+        lines.append(f"- Styl odpowiedzi: {_format_answer_style(preferences.get('answer_style'))}.")
     return "\n".join(lines)
 
 
 def _format_preferences_response(preferences: dict[str, object]) -> str:
     limit = preferences.get("max_sentences")
     ask = preferences.get("ask_check_question") is True
+    answer_style = _format_answer_style(preferences.get("answer_style"))
     limit_text = f"{limit} zdania" if isinstance(limit, int) else "bez limitu"
     ask_text = "włączone" if ask else "wyłączone"
     return (
         "Aktualne preferencje:\n"
         f"- Maksymalna długość odpowiedzi: {limit_text}.\n"
-        f"- Pytanie kontrolne: {ask_text}."
+        f"- Pytanie kontrolne: {ask_text}.\n"
+        f"- Styl odpowiedzi: {answer_style}."
     )
 
 
@@ -835,7 +879,58 @@ def _is_meta_preferences_query(normalized_text: str) -> bool:
         return True
     if "preferencj" in normalized_text and "jak" in normalized_text:
         return True
+    if "styl odpowiedzi" in normalized_text and "jak" in normalized_text:
+        return True
     return "dlugosc odpowiedzi" in normalized_text and "jak" in normalized_text
+
+
+def _extract_answer_style(normalized_text: str) -> str | None:
+    normalized_plain = re.sub(r"[^a-z0-9\s]", " ", normalized_text)
+    normalized_plain = re.sub(r"\s+", " ", normalized_plain).strip()
+    if any(
+        marker in normalized_plain
+        for marker in (
+            "tryb krotki",
+            "odpowiadaj krotko",
+            "styl odpowiedzi short",
+            "styl odpowiedzi krotki",
+            "ustaw styl odpowiedzi short",
+            "odpowiadaj zwiezle",
+        )
+    ):
+        return "short"
+    if any(
+        marker in normalized_plain
+        for marker in (
+            "tryb rozszerzony",
+            "odpowiadaj szeroko",
+            "odpowiadaj rozbudowanie",
+            "styl odpowiedzi extended",
+            "styl odpowiedzi rozszerzony",
+            "ustaw styl odpowiedzi extended",
+        )
+    ):
+        return "extended"
+    if any(
+        marker in normalized_plain
+        for marker in (
+            "tryb normalny",
+            "odpowiadaj normalnie",
+            "styl odpowiedzi normal",
+            "ustaw styl odpowiedzi normal",
+        )
+    ):
+        return "normal"
+    return None
+
+
+def _format_answer_style(raw_style: object) -> str:
+    normalized = raw_style.strip().lower() if isinstance(raw_style, str) else DEFAULT_ANSWER_STYLE
+    if normalized == "short":
+        return "krótki"
+    if normalized == "extended":
+        return "rozszerzony"
+    return "normalny"
 
 
 def _extract_max_sentences(normalized_text: str) -> int | None:
@@ -858,14 +953,16 @@ def _preferences_prompt_block(preferences: dict[str, object]) -> str | None:
     lines: list[str] = []
     max_sentences = preferences.get("max_sentences")
     ask_check_question = preferences.get("ask_check_question")
-    style_short = preferences.get("style_short")
+    answer_style = _resolve_answer_style(preferences)
 
     if isinstance(max_sentences, int):
         lines.append(f"- Limit długości odpowiedzi: maksymalnie {max_sentences} zdania.")
     if ask_check_question is False:
         lines.append("- Nie zadawaj pytania sprawdzającego na końcu odpowiedzi.")
-    if style_short is True and not isinstance(max_sentences, int):
+    if answer_style == "short" and not isinstance(max_sentences, int):
         lines.append("- Odpowiadaj krótko i konkretnie.")
+    elif answer_style == "extended":
+        lines.append("- Odpowiadaj szerzej, ale bez dodawania nowych faktów.")
     if not lines:
         return None
     return "\n".join(lines)
@@ -878,26 +975,100 @@ def _apply_content_preferences(
     preferences: dict[str, object],
 ) -> str:
     text_body, citation_suffix = _split_citation_suffix(content) if citations else (content, "")
-    ask_check_question = preferences.get("ask_check_question")
-    if ask_check_question is False:
-        answer_body = _strip_trailing_check_question(text_body)
-        check_question = ""
-    else:
-        answer_body, check_question = _split_answer_and_check_question(text_body)
+    answer_style = _resolve_answer_style(preferences)
+    ask_check_question = preferences.get("ask_check_question") is not False
 
-    max_sentences = preferences.get("max_sentences")
-    if isinstance(max_sentences, int):
-        answer_body = _limit_to_sentences(answer_body, max_sentences)
+    answer_body, generated_question = _split_answer_and_check_question(text_body)
+    answer_body = _strip_trailing_check_question(answer_body or text_body)
+    if not answer_body:
+        answer_body = " ".join(text_body.split()).strip()
 
-    if ask_check_question is not False and not check_question:
-        check_question = DEFAULT_CHECK_QUESTION
+    fact_limit = _determine_fact_sentence_limit(
+        answer_style=answer_style,
+        max_sentences=preferences.get("max_sentences"),
+    )
+    if fact_limit > 0:
+        answer_body = _limit_to_sentences(answer_body, fact_limit)
 
-    parts = [part for part in [answer_body.strip(), check_question.strip()] if part]
-    rewritten = "\n\n".join(parts).strip()
+    if answer_style == "short":
+        compact = answer_body.strip() or " ".join(text_body.split()).strip()
+        return _join_body_with_citations(compact, citation_suffix)
+
+    sections: list[str] = []
+    factual_section = answer_body.strip() or " ".join(text_body.split()).strip()
+    if factual_section:
+        sections.append(f"Odpowiedź (z materiału):\n{factual_section}")
+
+    learning_section = _build_learning_section(
+        answer_style=answer_style,
+        max_sentences=preferences.get("max_sentences"),
+    )
+    if learning_section:
+        sections.append(f"Jak to zapamiętać:\n{learning_section}")
+
+    if ask_check_question:
+        question = generated_question.strip()
+        if not question.endswith("?") or _is_check_question_sentence(question):
+            question = _default_check_question_for_style(answer_style)
+        sections.append(f"Sprawdź się:\n{question}")
+
+    rewritten = "\n\n".join(section for section in sections if section.strip()).strip()
     if not rewritten:
-        rewritten = answer_body.strip() or text_body.strip()
+        rewritten = factual_section
+    return _join_body_with_citations(rewritten, citation_suffix)
 
-    return rewritten + citation_suffix
+
+def _join_body_with_citations(body: str, citation_suffix: str) -> str:
+    if not citation_suffix:
+        return body
+    normalized_suffix = citation_suffix.lstrip("\n")
+    if not body:
+        return normalized_suffix
+    return f"{body}\n\n{normalized_suffix}"
+
+
+def _resolve_answer_style(preferences: dict[str, object]) -> str:
+    raw_style = preferences.get("answer_style")
+    if isinstance(raw_style, str):
+        normalized = raw_style.strip().lower()
+        if normalized in ANSWER_STYLE_VALUES:
+            return normalized
+
+    if preferences.get("style_short") is True:
+        return "short"
+    return DEFAULT_ANSWER_STYLE
+
+
+def _determine_fact_sentence_limit(*, answer_style: str, max_sentences: object) -> int:
+    style_cap = STYLE_FACT_SENTENCE_CAP.get(answer_style, STYLE_FACT_SENTENCE_CAP["normal"])
+    if isinstance(max_sentences, int) and max_sentences > 0:
+        return min(style_cap, max_sentences)
+    return style_cap
+
+
+def _build_learning_section(*, answer_style: str, max_sentences: object) -> str:
+    if answer_style == "extended":
+        return (
+            "Najpierw nazwij główną myśl własnymi słowami. "
+            "Następnie powiąż ją z przyczyną i skutkiem opisanymi w materiale. "
+            "Potem sprawdź, czy umiesz streścić temat jednym krótkim wyjaśnieniem. "
+            "Na końcu porównaj swoje streszczenie z odpowiedzią i popraw to, co jest nieprecyzyjne."
+        )
+
+    if isinstance(max_sentences, int) and max_sentences <= 2:
+        return "Powtórz własnymi słowami najważniejszą myśl i wskaż jej sens w kontekście tematu."
+    return (
+        "Powtórz własnymi słowami główną myśl z odpowiedzi. "
+        "Następnie połącz ją z przyczyną i skutkiem opisanymi w materiale."
+    )
+
+
+def _default_check_question_for_style(answer_style: str) -> str:
+    if answer_style == "extended":
+        return (
+            "Jak własnymi słowami wyjaśnisz główną myśl i jej skutek opisany w materiale?"
+        )
+    return "Jak własnymi słowami wyjaśnisz najważniejszą myśl z tej odpowiedzi?"
 
 
 def _split_citation_suffix(content: str) -> tuple[str, str]:
