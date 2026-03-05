@@ -74,15 +74,11 @@ META_INTENT_MARKERS = (
     "od teraz",
     "ustaw",
     "prosze ustaw",
+    "odpowiadaj krotko",
     "preferencje",
     "jakie mam",
     "jakie sa moje",
     "jaka dlugosc",
-    "maks",
-    "max",
-    "krotko",
-    "w 2 zdaniach",
-    "w 3 zdaniach",
     "nie zadawaj pytania",
     "bez pytania",
     "zadawaj pytania",
@@ -702,6 +698,9 @@ def _looks_like_no_context_response(generated_text: str) -> bool:
 
 
 def _classify_intent(user_text: str) -> str:
+    if _is_followup_summary_request(user_text):
+        return "CONTENT"
+
     normalized = normalize_for_match(user_text)
     if any(marker in normalized for marker in META_INTENT_MARKERS):
         return "META"
@@ -1156,7 +1155,12 @@ def _build_extractive_fallback(
         main_keyword=main_keyword,
         keywords=keywords,
     )
-    snippet = _extract_chunk_snippet(evidence_chunk.text, main_keyword=main_keyword)
+    snippet = _extract_chunk_snippet(
+        evidence_chunk.text,
+        phrase_norm=phrase_norm,
+        main_keyword=main_keyword,
+        keywords=keywords,
+    )
     content = (
         "Na podstawie dostarczonego materiału mogę powiedzieć: "
         f"{snippet}\n\nCzy to wyjaśnienie jest dla Ciebie zrozumiałe?"
@@ -1248,28 +1252,79 @@ def _pick_evidence_chunk(
     return context_chunks[0]
 
 
-def _extract_chunk_snippet(text: str, *, main_keyword: str | None = None) -> str:
+def _extract_chunk_snippet(
+    text: str,
+    *,
+    phrase_norm: str | None,
+    main_keyword: str | None,
+    keywords: list[str],
+) -> str:
     compact = " ".join(text.split()).strip()
     if not compact:
         return "w materiale jest krótka wzmianka na ten temat."
 
     sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", compact) if part.strip()]
-    selected_sentences = sentences
-    if main_keyword and sentences:
-        main_keyword_norm = normalize_for_match(main_keyword)
-        keyword_sentences = [
-            sentence
-            for sentence in sentences
-            if main_keyword_norm in normalize_for_match(sentence)
-        ]
-        if keyword_sentences:
-            selected_sentences = keyword_sentences
+    if not sentences:
+        return "w materiale jest krótka wzmianka na ten temat."
 
-    snippet = (
-        " ".join(selected_sentences[:2]) if selected_sentences else compact[:260].rstrip()
-    )
+    scored: list[tuple[int, int, int, str]] = []
+    for idx, sentence in enumerate(sentences):
+        score = _score_sentence(
+            sentence=sentence,
+            phrase_norm=phrase_norm,
+            main_keyword=main_keyword,
+            keywords=keywords,
+        )
+        scored.append((score, len(sentence), idx, sentence))
+
+    ranked = sorted(scored, key=lambda row: (-row[0], -row[1], row[2]))
+    selected = [row[3] for row in ranked[:2]]
+    if len(selected) == 2:
+        index_map = {sentence: idx for idx, sentence in enumerate(sentences)}
+        selected = sorted(selected, key=lambda sentence: index_map.get(sentence, 10**6))
+
+    cleaned_selected = [_clean_fallback_sentence(sentence) for sentence in selected]
+    cleaned_selected = [sentence for sentence in cleaned_selected if sentence]
+    snippet = " ".join(cleaned_selected).strip()
+    if not snippet:
+        snippet = _clean_fallback_sentence(sentences[0])
     if len(snippet) > 320:
         snippet = snippet[:317].rstrip() + "..."
     if snippet and snippet[-1] not in ".!?":
         snippet += "."
     return snippet
+
+
+def _score_sentence(
+    *,
+    sentence: str,
+    phrase_norm: str | None,
+    main_keyword: str | None,
+    keywords: list[str],
+) -> int:
+    normalized = normalize_for_match(sentence)
+    score = 0
+
+    if phrase_norm and phrase_norm in normalized:
+        score += 2
+    if main_keyword and normalize_for_match(main_keyword) in normalized:
+        score += 1
+    if len(keywords) >= 2:
+        keyword_hits = sum(1 for keyword in keywords if normalize_for_match(keyword) in normalized)
+        if keyword_hits >= 2:
+            score += 1
+
+    if len(normalized) < 24:
+        score -= 1
+    if re.match(r"^\s*\d+\s+", sentence):
+        score -= 2
+    if sentence.endswith(("(", "-", "–", "—")):
+        score -= 1
+    return score
+
+
+def _clean_fallback_sentence(sentence: str) -> str:
+    cleaned = sentence.strip()
+    cleaned = re.sub(r"^\d{1,3}\s+(?=[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż])", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned

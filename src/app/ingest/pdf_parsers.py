@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
@@ -79,7 +80,33 @@ def load_pdf_pages_for_ingest(pdf_path: Path, *, parser_name: str) -> list[tuple
         max_pages=None,
         selected_pages=None,
     )
-    return pages
+    return [(page_no, clean_pdf_text(text)) for page_no, text in pages]
+
+
+def clean_pdf_text(text: str) -> str:
+    if not text:
+        return ""
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    # Join line-broken words like "misjo-\nnarz" before flattening whitespace.
+    normalized = re.sub(
+        r"(?<=[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż])-\n(?=[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż])",
+        "",
+        normalized,
+    )
+
+    cleaned_lines: list[str] = []
+    for line in normalized.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Drop bare line-leading indices like "21 Święty Wojciech..."
+        stripped = re.sub(r"^\d{1,3}\s+(?=[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż])", "", stripped)
+        cleaned_lines.append(stripped)
+
+    compact = " ".join(cleaned_lines)
+    compact = re.sub(r"\s+", " ", compact).strip()
+    return compact
 
 
 def extract_pdf_pages(

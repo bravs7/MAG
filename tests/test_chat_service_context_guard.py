@@ -107,6 +107,18 @@ class FakeOllama:
         return self.generated
 
 
+class FakeRetrieverWithHistoryChunk:
+    def __init__(self, history_chunk: RetrievedChunk) -> None:
+        self.history_chunk = history_chunk
+        self.calls = 0
+
+    def retrieve_by_chunk_ids(self, *, chunk_ids: list[str]) -> list[RetrievedChunk]:
+        self.calls += 1
+        if self.history_chunk.chunk_id in chunk_ids:
+            return [self.history_chunk]
+        return []
+
+
 def _build_service(
     *,
     generated: str,
@@ -300,3 +312,256 @@ def test_extractive_fallback_picks_main_keyword_evidence_chunk() -> None:
     assert len(citations) == 1
     assert citations[0].chunk_id == "c-mieszko-evidence"
     assert "Mieszko" in content
+
+
+def test_extractive_fallback_uses_clean_sentence_not_leading_page_number() -> None:
+    evidence_chunk = RetrievedChunk(
+        chunk_id="c-wojciech-evidence",
+        source_file="historia.pdf",
+        page=23,
+        text=(
+            "21 Święty Wojciech (ok. 956-997) był biskupem praskim i misjonarzem. "
+            "Zginął śmiercią męczeńską podczas misji."
+        ),
+        score=0.92,
+    )
+
+    content, citations = _build_extractive_fallback(
+        context_chunks=[evidence_chunk],
+        phrase_norm="swiety wojciech",
+        main_keyword="wojciech",
+        keywords=["swiety", "wojciech"],
+    )
+
+    first_line = content.splitlines()[0]
+    assert not first_line.startswith("Na podstawie dostarczonego materiału mogę powiedzieć: 21 ")
+    assert "Święty Wojciech" in content
+    assert len(citations) == 1
+    assert citations[0].chunk_id == "c-wojciech-evidence"
+
+
+def test_followup_summary_keeps_context_for_wojciech_topic() -> None:
+    evidence = RetrievedChunk(
+        chunk_id="c-wojciech",
+        source_file="historia.pdf",
+        page=23,
+        text=(
+            "Święty Wojciech był biskupem praskim i misjonarzem. "
+            "Zginął śmiercią męczeńską podczas misji."
+        ),
+        score=1.0,
+    )
+    retrieval_bundle = RetrievalBundle(
+        final_chunks=[evidence],
+        candidates=[],
+        keywords=["wrocmy", "podsumuj", "informacje"],
+        main_keyword="informacje",
+        phrase_norm=None,
+        query_evidence=False,
+        lexical_fallback_used=False,
+    )
+    service, messages_repo, _ = _build_service(
+        generated=(
+            "Święty Wojciech był biskupem i misjonarzem. "
+            "Zginął śmiercią męczeńską. Czy to jest dla Ciebie jasne?"
+        ),
+        retrieval_bundle=retrieval_bundle,
+    )
+    thread_id = "thread-followup"
+    messages_repo.by_thread[thread_id] = [
+        ChatMessage(
+            id="u-prev",
+            thread_id=thread_id,
+            role="user",
+            content="Kto to był Święty Wojciech?",
+        ),
+        ChatMessage(
+            id="a-prev",
+            thread_id=thread_id,
+            role="assistant",
+            content="Święty Wojciech był biskupem praskim.",
+            sources=[
+                SourceCitation(
+                    source_file="historia.pdf",
+                    page=23,
+                    chunk_id="c-wojciech",
+                    score=0.91,
+                )
+            ],
+        ),
+    ]
+
+    reply = service.respond(
+        thread_id=thread_id,
+        user_text="Wróćmy do tego, co mówiłeś o Wojciechu: podsumuj w 2 zdaniach.",
+    )
+
+    assert "Nie wiem na podstawie dostarczonych materiałów." not in reply.content
+    assert len(reply.sources) == 1
+    assert reply.sources[0].chunk_id == "c-wojciech"
+    assert reply.config_fingerprint["retrieval_summary"]["has_context"] is True
+
+
+def test_followup_summary_prefers_history_cited_chunk_over_irrelevant_top_chunk() -> None:
+    irrelevant = RetrievedChunk(
+        chunk_id="c-irrelevant",
+        source_file="historia.pdf",
+        page=77,
+        text="Unia polsko-litewska została zawarta po długich negocjacjach.",
+        score=1.0,
+    )
+    wojciech = RetrievedChunk(
+        chunk_id="c-wojciech",
+        source_file="historia.pdf",
+        page=23,
+        text="Święty Wojciech był biskupem praskim i misjonarzem.",
+        score=0.74,
+    )
+    retrieval_bundle = RetrievalBundle(
+        final_chunks=[irrelevant, wojciech],
+        candidates=[],
+        keywords=["wrocmy", "podsumuj", "informacje"],
+        main_keyword="informacje",
+        phrase_norm=None,
+        query_evidence=False,
+        lexical_fallback_used=False,
+    )
+    service, messages_repo, _ = _build_service(
+        generated="Święty Wojciech żył około 1999 roku.",
+        retrieval_bundle=retrieval_bundle,
+    )
+    thread_id = "thread-followup-history"
+    messages_repo.by_thread[thread_id] = [
+        ChatMessage(
+            id="u-prev",
+            thread_id=thread_id,
+            role="user",
+            content="Kto to był Święty Wojciech?",
+        ),
+        ChatMessage(
+            id="a-prev",
+            thread_id=thread_id,
+            role="assistant",
+            content="Święty Wojciech był biskupem praskim.",
+            sources=[
+                SourceCitation(
+                    source_file="historia.pdf",
+                    page=23,
+                    chunk_id="c-wojciech",
+                    score=0.91,
+                )
+            ],
+        ),
+    ]
+
+    reply = service.respond(
+        thread_id=thread_id,
+        user_text="Wróćmy do tego i podsumuj w 2 zdaniach najważniejsze informacje.",
+    )
+
+    assert "Nie wiem na podstawie dostarczonych materiałów." not in reply.content
+    assert len(reply.sources) == 1
+    assert reply.sources[0].chunk_id == "c-wojciech"
+
+
+def test_followup_summary_fetches_and_prefers_history_chunk_when_topk_is_irrelevant() -> None:
+    retrieval_bundle = RetrievalBundle(
+        final_chunks=[
+            RetrievedChunk(
+                chunk_id="c-irrelevant-top",
+                source_file="historia.pdf",
+                page=115,
+                text="Jan Paweł II odwiedził Polskę wielokrotnie.",
+                score=1.0,
+            )
+        ],
+        candidates=[],
+        keywords=["wojciech"],
+        main_keyword="wojciech",
+        phrase_norm=None,
+        query_evidence=False,
+        lexical_fallback_used=False,
+    )
+    service, messages_repo, _ = _build_service(
+        generated="Nie wiem na podstawie dostarczonych materiałów.",
+        retrieval_bundle=retrieval_bundle,
+    )
+
+    history_chunk = RetrievedChunk(
+        chunk_id="c-history-wojciech",
+        source_file="historia.pdf",
+        page=23,
+        text="Święty Wojciech był biskupem praskim i misjonarzem.",
+        score=1.0,
+    )
+    fake_retriever = FakeRetrieverWithHistoryChunk(history_chunk=history_chunk)
+    service.retriever = fake_retriever
+
+    thread_id = "thread-followup-priority"
+    messages_repo.by_thread[thread_id] = [
+        ChatMessage(
+            id="u-prev",
+            thread_id=thread_id,
+            role="user",
+            content="Kto to był Święty Wojciech?",
+        ),
+        ChatMessage(
+            id="a-prev",
+            thread_id=thread_id,
+            role="assistant",
+            content="Święty Wojciech był biskupem praskim.",
+            sources=[
+                SourceCitation(
+                    source_file="historia.pdf",
+                    page=23,
+                    chunk_id="c-history-wojciech",
+                    score=0.91,
+                )
+            ],
+        ),
+    ]
+
+    reply = service.respond(
+        thread_id=thread_id,
+        user_text="Wróćmy do tego, co mówiłeś o Wojciechu: podsumuj w 2 zdaniach.",
+    )
+
+    assert fake_retriever.calls >= 1
+    assert "Nie wiem na podstawie dostarczonych materiałów." not in reply.content
+    assert len(reply.sources) == 1
+    assert reply.sources[0].chunk_id == "c-history-wojciech"
+
+
+def test_followup_summary_without_history_returns_clarifying_no_context() -> None:
+    retrieval_bundle = RetrievalBundle(
+        final_chunks=[
+            RetrievedChunk(
+                chunk_id="c-kossak",
+                source_file="historia.pdf",
+                page=81,
+                text="Wojciech Kossak był malarzem batalistą.",
+                score=1.0,
+            )
+        ],
+        candidates=[],
+        keywords=["wojciech"],
+        main_keyword="wojciech",
+        phrase_norm=None,
+        query_evidence=True,
+        lexical_fallback_used=False,
+    )
+    service, _, fake_ollama = _build_service(
+        generated="Wojciech Kossak był malarzem batalistą.",
+        retrieval_bundle=retrieval_bundle,
+    )
+
+    reply = service.respond(
+        thread_id="thread-empty-history",
+        user_text="Podsumuj w 2 zdaniach, co mówiłeś o Wojciechu.",
+    )
+
+    assert "Nie wiem na podstawie dostarczonych materiałów." in reply.content
+    assert "o którego" in reply.content
+    assert len(reply.sources) == 0
+    assert reply.config_fingerprint["retrieval_summary"]["has_context"] is False
+    assert fake_ollama.prompts == []
