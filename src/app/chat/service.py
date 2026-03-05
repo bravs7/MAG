@@ -106,6 +106,14 @@ ENABLE_CHECK_QUESTION_MARKERS = (
     "zadawaj pytania sprawdzajace",
 )
 DEFAULT_CHECK_QUESTION = "Czy to jest dla Ciebie zrozumiałe?"
+CHECK_QUESTION_PATTERNS = (
+    re.compile(r"^czy\s+to\s+wyjasnienie\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
+    re.compile(r"^czy\s+to\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
+    re.compile(r"^czy\s+to\s+dla\s+ciebie\s+jasne$"),
+    re.compile(r"^czy\s+to\s+jest\s+jasne$"),
+    re.compile(r"^czy\s+zrozumial(?:es|as)?(?:\s+to)?$"),
+    re.compile(r"^czy\s+rozumiesz(?:\s+to)?$"),
+)
 
 
 @dataclass(slots=True)
@@ -309,21 +317,38 @@ class ChatService:
             citations = []
             numeric_guard_triggered = False
         else:
+            followup_focus_terms = (
+                _build_followup_focus_entity_terms(
+                    user_text=user_text,
+                    phrase_norm=retrieval.phrase_norm,
+                    main_keyword=retrieval.main_keyword,
+                    keywords=retrieval.keywords,
+                )
+                if summary_followup
+                else []
+            )
             context_chunks = _select_context_chunks(
                 retrieved_chunks=retrieved_chunks,
                 phrase_norm=retrieval.phrase_norm,
                 main_keyword=retrieval.main_keyword,
                 keywords=retrieval.keywords,
             )[:MAX_CONTEXT_CHUNKS]
+            if summary_followup and followup_focus_terms:
+                context_chunks = _sort_chunks_by_entity_density(
+                    context_chunks,
+                    followup_focus_terms,
+                )[:MAX_CONTEXT_CHUNKS]
             if summary_followup and followup_has_history_evidence:
                 history_context_chunks = self._resolve_history_context_chunks(
                     history_source_ids=history_source_ids,
                     retrieved_chunks=retrieved_chunks,
                 )
                 if history_context_chunks:
-                    # For follow-up summaries, history evidence has strict
-                    # priority over fresh top-k.
-                    context_chunks = history_context_chunks[:MAX_CONTEXT_CHUNKS]
+                    context_chunks = _prefer_followup_history_context(
+                        history_chunks=history_context_chunks,
+                        fresh_chunks=context_chunks,
+                        focus_terms=followup_focus_terms,
+                    )[:MAX_CONTEXT_CHUNKS]
             if summary_followup and has_context and not context_chunks:
                 followup_candidates = retrieved_chunks
                 search_terms = _build_followup_search_terms(
@@ -344,6 +369,11 @@ class ChatService:
                     history_messages=history_before_current,
                     user_text=user_text,
                     n_turns=self.config.n_turns,
+                )[:MAX_CONTEXT_CHUNKS]
+            if summary_followup and followup_focus_terms:
+                context_chunks = _sort_chunks_by_entity_density(
+                    context_chunks,
+                    followup_focus_terms,
                 )[:MAX_CONTEXT_CHUNKS]
             if not context_chunks:
                 has_context = False
@@ -848,22 +878,24 @@ def _apply_content_preferences(
     preferences: dict[str, object],
 ) -> str:
     text_body, citation_suffix = _split_citation_suffix(content) if citations else (content, "")
-    answer_body, check_question = _split_answer_and_check_question(text_body)
+    ask_check_question = preferences.get("ask_check_question")
+    if ask_check_question is False:
+        answer_body = _strip_trailing_check_question(text_body)
+        check_question = ""
+    else:
+        answer_body, check_question = _split_answer_and_check_question(text_body)
 
     max_sentences = preferences.get("max_sentences")
     if isinstance(max_sentences, int):
         answer_body = _limit_to_sentences(answer_body, max_sentences)
 
-    ask_check_question = preferences.get("ask_check_question")
-    if ask_check_question is False:
-        check_question = ""
-    elif not check_question:
+    if ask_check_question is not False and not check_question:
         check_question = DEFAULT_CHECK_QUESTION
 
     parts = [part for part in [answer_body.strip(), check_question.strip()] if part]
     rewritten = "\n\n".join(parts).strip()
     if not rewritten:
-        rewritten = text_body.strip()
+        rewritten = answer_body.strip() or text_body.strip()
 
     return rewritten + citation_suffix
 
@@ -887,6 +919,37 @@ def _split_answer_and_check_question(content: str) -> tuple[str, str]:
     if len(sentences) >= 2 and sentences[-1].endswith("?"):
         return " ".join(sentences[:-1]).strip(), sentences[-1]
     return compact, ""
+
+
+def _strip_trailing_check_question(content: str) -> str:
+    compact = " ".join(content.split()).strip()
+    if not compact:
+        return compact
+
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", compact) if part.strip()]
+    if not sentences:
+        return compact
+
+    for _ in range(2):
+        if not sentences:
+            break
+        if _is_check_question_sentence(sentences[-1]):
+            sentences.pop()
+            continue
+        break
+
+    if not sentences:
+        return ""
+    return " ".join(sentences).strip()
+
+
+def _is_check_question_sentence(sentence: str) -> bool:
+    normalized = normalize_for_match(sentence)
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if not normalized.startswith("czy "):
+        return False
+    return any(pattern.fullmatch(normalized) for pattern in CHECK_QUESTION_PATTERNS)
 
 
 def _limit_to_sentences(content: str, limit: int) -> str:
@@ -1068,6 +1131,113 @@ def _select_followup_context_chunks(
         return by_topic_terms
 
     return retrieved_chunks
+
+
+def _build_followup_focus_entity_terms(
+    *,
+    user_text: str,
+    phrase_norm: str | None,
+    main_keyword: str | None,
+    keywords: list[str],
+) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def add_term(raw_term: str | None) -> None:
+        if not raw_term:
+            return
+        normalized = normalize_for_match(raw_term)
+        if len(normalized) < 4 or normalized in seen:
+            return
+        terms.append(normalized)
+        seen.add(normalized)
+
+    add_term(phrase_norm)
+    add_term(main_keyword)
+    for keyword in keywords:
+        add_term(keyword)
+    for term in _extract_followup_topic_terms(user_text):
+        add_term(term)
+
+    normalized_user = normalize_for_match(user_text)
+    if "wojciech" in normalized_user:
+        for special in (
+            "swiety wojciech",
+            "sw wojciech",
+            "wojciech",
+            "wojciecha",
+        ):
+            add_term(special)
+
+    return terms
+
+
+def _entity_density_score(text: str, entity_terms: list[str]) -> int:
+    normalized_text = normalize_for_match(text)
+    if not normalized_text or not entity_terms:
+        return 0
+
+    early_text = normalized_text[:200]
+    score = 0
+    for term in entity_terms:
+        if " " in term:
+            occurrences = normalized_text.count(term)
+            if occurrences:
+                score += occurrences * 3
+                if term in early_text:
+                    score += 2
+            continue
+
+        occurrences = _count_root_occurrences(normalized_text, term)
+        if occurrences:
+            score += occurrences
+            if _count_root_occurrences(early_text, term):
+                score += 1
+    return score
+
+
+def _count_root_occurrences(text: str, term: str) -> int:
+    if not text or not term:
+        return 0
+    root = _topic_token_root(term)
+    tokens = re.findall(r"[a-z0-9]+", text)
+    return sum(1 for token in tokens if token.startswith(root))
+
+
+def _sort_chunks_by_entity_density(
+    chunks: list[RetrievedChunk], focus_terms: list[str]
+) -> list[RetrievedChunk]:
+    if not chunks or not focus_terms:
+        return chunks
+
+    return sorted(
+        chunks,
+        key=lambda chunk: (
+            -_entity_density_score(chunk.text, focus_terms),
+            -chunk.score,
+            chunk.chunk_id,
+        ),
+    )
+
+
+def _prefer_followup_history_context(
+    *,
+    history_chunks: list[RetrievedChunk],
+    fresh_chunks: list[RetrievedChunk],
+    focus_terms: list[str],
+) -> list[RetrievedChunk]:
+    ranked_history = _sort_chunks_by_entity_density(history_chunks, focus_terms)
+    ranked_fresh = _sort_chunks_by_entity_density(fresh_chunks, focus_terms)
+    if not ranked_history:
+        return ranked_fresh
+    if not ranked_fresh:
+        return ranked_history
+
+    history_best = _entity_density_score(ranked_history[0].text, focus_terms)
+    fresh_best = _entity_density_score(ranked_fresh[0].text, focus_terms)
+    if history_best >= fresh_best:
+        return ranked_history
+    return ranked_fresh
 
 
 def _history_contains_topic_term(history_tokens: list[str], term: str) -> bool:
