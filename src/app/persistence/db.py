@@ -24,6 +24,7 @@ class Database:
         sql = self._schema_path.read_text(encoding="utf-8")
         with self.connect() as conn:
             conn.executescript(sql)
+            self._ensure_preferences_column(conn)
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -36,3 +37,13 @@ class Database:
             raise
         finally:
             conn.close()
+
+    @staticmethod
+    def _ensure_preferences_column(conn: sqlite3.Connection) -> None:
+        rows = conn.execute("PRAGMA table_info(thread_state)").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        if "preferences_json" in existing:
+            return
+        conn.execute(
+            "ALTER TABLE thread_state ADD COLUMN preferences_json TEXT NOT NULL DEFAULT '{}'"
+        )

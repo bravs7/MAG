@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS thread_state (
     thread_id TEXT PRIMARY KEY,
     summary TEXT,
     memory_version INTEGER NOT NULL,
+    preferences_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL,
     FOREIGN KEY(thread_id) REFERENCES threads(id) ON DELETE CASCADE
 );

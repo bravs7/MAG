@@ -60,3 +60,18 @@ def test_system_rules_include_instruction_priority() -> None:
     assert "Domyślnie odpowiadaj po polsku" in rules
     assert "Nie wiem na podstawie dostarczonych materiałów." in rules
     assert "W materiałach nie znalazłem informacji o: <temat>" in rules
+
+
+def test_prompt_includes_user_preferences_section_when_present() -> None:
+    prompt = build_prompt(
+        system_rules=default_system_rules(),
+        teacher_rules="teacher-rules",
+        summary=None,
+        recent_messages=[],
+        retrieved_chunks=[],
+        user_message="Pytanie",
+        user_preferences="- Limit odpowiedzi: 2 zdania.",
+    )
+
+    assert "## USER_PREFERENCES" in prompt
+    assert "Limit odpowiedzi: 2 zdania." in prompt

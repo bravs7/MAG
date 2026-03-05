@@ -13,6 +13,7 @@ def build_prompt(
     recent_messages: list[ChatMessage],
     retrieved_chunks: list[RetrievedChunk],
     user_message: str,
+    user_preferences: str | None = None,
 ) -> str:
     sections: list[str] = []
 
@@ -28,6 +29,9 @@ def build_prompt(
         sections.append("## RECENT_TURNS\n" + "\n".join(lines))
     else:
         sections.append("## RECENT_TURNS\n(brak)")
+
+    if user_preferences:
+        sections.append("## USER_PREFERENCES\n" + user_preferences)
 
     # 4) Retrieved Context
     if retrieved_chunks:

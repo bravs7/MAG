@@ -198,6 +198,40 @@ class ThreadStateRepository:
                 (thread_id, summary, memory_version, now),
             )
 
+    def get_preferences(self, thread_id: str) -> dict[str, object]:
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT preferences_json FROM thread_state WHERE thread_id = ?",
+                (thread_id,),
+            ).fetchone()
+        if row is None:
+            return {}
+        payload = row["preferences_json"] or "{}"
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        return parsed
+
+    def upsert_preferences(self, *, thread_id: str, preferences: dict[str, object]) -> None:
+        now = utc_now_iso()
+        payload = json.dumps(preferences, ensure_ascii=False)
+        with self._db.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO thread_state (
+                  thread_id, summary, memory_version, preferences_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(thread_id) DO UPDATE SET
+                  preferences_json = excluded.preferences_json,
+                  updated_at = excluded.updated_at
+                """,
+                (thread_id, None, 0, payload, now),
+            )
+
 
 class Persistence:
     def __init__(self, db_path: Path) -> None:
