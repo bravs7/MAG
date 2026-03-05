@@ -1,0 +1,50 @@
+{"id":"q001","category":"in_scope_factual","question":"Kto to był Święty Wojciech?"}
+{"id":"q002","category":"in_scope_factual","question":"Kim był Mieszko I?"}
+{"id":"q003","category":"in_scope_factual","question":"Kim był Bolesław Chrobry?"}
+{"id":"q004","category":"in_scope_factual","question":"Czym był Zjazd Gnieźnieński?"}
+{"id":"q005","category":"in_scope_factual","question":"Co oznacza pojęcie chrzest Polski?"}
+{"id":"q006","category":"in_scope_factual","question":"Jaki był los ciała Świętego Wojciecha po jego śmierci?"}
+{"id":"q007","category":"in_scope_factual","question":"Jaką rolę odgrywał Otton III podczas Zjazdu Gnieźnieńskiego?"}
+{"id":"q008","category":"in_scope_factual","question":"Jakie znaczenie miał Gniezno dla państwa Piastów?"}
+{"id":"q009","category":"in_scope_factual","question":"Jaką rolę pełnił Kościół w umacnianiu państwa pierwszych Piastów?"}
+{"id":"q010","category":"in_scope_factual","question":"Dlaczego Święty Wojciech jest ważny dla historii Polski?"}
+{"id":"q011","category":"in_scope_factual","question":"Co wiadomo o relacji Bolesława Chrobrego i cesarza Ottona III?"}
+{"id":"q012","category":"in_scope_factual","question":"Jakie ziemie lub wpływy starał się umacniać Bolesław Chrobry?"}
+{"id":"q013","category":"in_scope_explain","question":"Wyjaśnij prostymi słowami, dlaczego chrzest Polski był przełomowy."}
+{"id":"q014","category":"in_scope_explain","question":"Wytłumacz uczniowi klasy 5, po co odbył się Zjazd Gnieźnieński."}
+{"id":"q015","category":"in_scope_explain","question":"Pomóż mi zrozumieć, jak decyzje Mieszka I wpłynęły na rozwój państwa."}
+{"id":"q016","category":"in_scope_explain","question":"Wyjaśnij krok po kroku, jaką rolę odegrał Bolesław Chrobry po śmierci Wojciecha."}
+{"id":"q017","category":"in_scope_explain","question":"Porównaj krótko Mieszka I i Bolesława Chrobrego pod kątem budowania państwa."}
+{"id":"q018","category":"in_scope_explain","question":"Jak opisałbyś dziecku znaczenie metropolii gnieźnieńskiej?"}
+{"id":"q019","category":"in_scope_explain","question":"Napisz krótkie podsumowanie o Świętym Wojciechu i jego misji."}
+{"id":"q020","category":"in_scope_explain","question":"Wskaż 3 najważniejsze skutki Zjazdu Gnieźnieńskiego."}
+{"id":"q021","category":"in_scope_explain","question":"Nie rozumiem, czemu Bolesław Chrobry wykupił ciało Wojciecha. Wyjaśnij."}
+{"id":"q022","category":"in_scope_explain","question":"W jaki sposób chrzest Polski wpłynął na miejsce Polski w Europie?"}
+{"id":"q023","category":"ambiguous","question":"Opowiedz mi o Wojciechu."}
+{"id":"q024","category":"ambiguous","question":"Wyjaśnij to wydarzenie z Gniezna."}
+{"id":"q025","category":"ambiguous","question":"Co było wtedy najważniejsze?"}
+{"id":"q026","category":"ambiguous","question":"Czy on dobrze zrobił?"}
+{"id":"q027","category":"ambiguous","question":"Pomóż mi to uporządkować, bo się gubię."}
+{"id":"q028","category":"ambiguous","question":"Jak to się zaczęło i co było potem?"}
+{"id":"q029","category":"ambiguous","question":"Która postać była kluczowa i dlaczego?"}
+{"id":"q030","category":"ambiguous","question":"Chcę krótkie wyjaśnienie, ale nie wiem od czego zacząć."}
+{"id":"q031","category":"out_of_scope","question":"Jak działa blockchain i smart kontrakty?"}
+{"id":"q032","category":"out_of_scope","question":"Opowiedz o fotosyntezie i oddychaniu komórkowym."}
+{"id":"q033","category":"out_of_scope","question":"Kto wygrał mundial w 2022 roku?"}
+{"id":"q034","category":"out_of_scope","question":"Wyjaśnij mi podstawy rachunku różniczkowego."}
+{"id":"q035","category":"out_of_scope","question":"Jak napisać grę 2D w Pythonie?"}
+{"id":"q036","category":"out_of_scope","question":"Co to jest inflacja i jak wpływa na kredyty?"}
+{"id":"q037","category":"out_of_scope","question":"Jaka jest stolica Japonii i 3 największe miasta?"}
+{"id":"q038","category":"out_of_scope","question":"Jak działają sieci neuronowe w uczeniu maszynowym?"}
+{"id":"q039","category":"numeric_date","question":"W którym roku był chrzest Polski?"}
+{"id":"q040","category":"numeric_date","question":"W jakim roku odbył się Zjazd Gnieźnieński?"}
+{"id":"q041","category":"numeric_date","question":"W jakich latach żył Święty Wojciech?"}
+{"id":"q042","category":"numeric_date","question":"Podaj datę śmierci Świętego Wojciecha."}
+{"id":"q043","category":"numeric_date","question":"Czy chrzest Polski miał miejsce w 966 roku?"}
+{"id":"q044","category":"misconception","question":"Mieszko I był królem Polski, prawda?"}
+{"id":"q045","category":"misconception","question":"Zjazd Gnieźnieński odbył się w 1225 roku, zgadza się?"}
+{"id":"q046","category":"misconception","question":"Święty Wojciech zginął w Rzymie, prawda?"}
+{"id":"q047","category":"misconception","question":"Bolesław Chrobry był synem Mieszka II, czy to poprawne?"}
+{"id":"q048","category":"misconception","question":"Chrzest Polski nic nie zmienił politycznie, prawda?"}
+{"id":"q049","category":"in_scope_factual","question":"Dlaczego grób Świętego Wojciecha miał znaczenie polityczne?"}
+{"id":"q050","category":"in_scope_explain","question":"Ułóż krótką notatkę z historii o Mieszku I, Chrobrym i Zjeździe Gnieźnieńskim."}

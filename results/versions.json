@@ -1,0 +1,31 @@
+{
+  "updated_at": "2026-03-05T10:28:22.523305+00:00",
+  "python": {
+    "version": "3.12.3",
+    "executable": "/home/bravs/projects/repos/MAG/.venv/bin/python3"
+  },
+  "uv": "uv 0.10.8",
+  "ollama_host": "http://172.17.176.1:11434",
+  "model_name": "qwen2.5:7b-instruct-q4_K_M",
+  "embed_model": "nomic-embed-text",
+  "eval": {
+    "seed": 1234,
+    "timeout_seconds": 90,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_questions": null,
+    "questions_path": "eval/questions_pl.jsonl",
+    "question_count": 50
+  },
+  "dependencies": {
+    "chromadb": "1.5.2",
+    "pymupdf": "1.27.1",
+    "ollama": "0.6.1",
+    "pydantic": "2.12.5",
+    "python-dotenv": "1.2.2",
+    "llama-index-core": "0.14.15",
+    "ragas": "0.4.3",
+    "pytest": "9.0.2",
+    "ruff": "0.15.4"
+  }
+}

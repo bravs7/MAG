@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mag"
+version = "0.1.0"
+description = "Local educational chatbot teacher with RAG and persistent memory"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "MAG Thesis" }
+]
+dependencies = [
+  "chromadb==1.5.2",
+  "PyMuPDF==1.27.1",
+  "ollama>=0.4.0,<1",
+  "pydantic>=2.10,<3",
+  "python-dotenv>=1.0,<2",
+  "orjson>=3.10,<4",
+  "llama-index-core==0.14.15",
+  "ragas==0.4.3",
+]
+
+[project.optional-dependencies]
+pdfbench = [
+  "pdfplumber>=0.11,<1",
+  "pypdf>=4,<6",
+  "pdfminer.six>=20231228",
+]
+phase2 = [
+  "chainlit==2.9.6",
+  "docling==2.76.0",
+  "plotly==6.6.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.2",
+    "pytest-benchmark>=5.1.0",
+    "ruff>=0.15.4",
+]
+
+[tool.uv]
+default-groups = ["dev"]
