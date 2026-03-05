@@ -14,5 +14,6 @@ data/chroma/
 results/*.csv
 results/*.jsonl
 results/*.md
+results/versions.json
 project-export.md
 results/versions.json
