@@ -70,6 +70,7 @@ uv run python -m app.eval_chat --questions eval/questions_pl.jsonl --seed 1234 -
 W CLI dostępne są też slash-komendy preferencji nauczyciela:
 `/normal`, `/short`, `/extended`, `/prefs`, `/check on|off`, `/sentences N` (1-20), `/help`.
 Przykład: ustaw krótki styl i wyłącz pytanie kontrolne: `/short` + `/check off`.
+Zapytania typu `Podsumuj ... <temat/postać>` działają jako streszczenie materiału RAG (bez wymogu historii rozmowy), jeśli retrieval ma dowód.
 
 ## Quality gate (clean env)
 ```bash

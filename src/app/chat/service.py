@@ -50,7 +50,6 @@ PROPER_NOUN_ALLOWLIST = {
     "polsce",
 }
 SUMMARY_FOLLOWUP_MARKERS = (
-    "przypomnij",
     "wrocmy",
     "wroc",
     "co mowiles",
@@ -59,6 +58,14 @@ SUMMARY_FOLLOWUP_MARKERS = (
     "o czym mowilas",
     "to co mowiles",
     "to co mowilas",
+    "jak mowiles wczesniej",
+    "jak mowilas wczesniej",
+)
+SUMMARY_TOPIC_MARKERS = (
+    "podsumuj",
+    "podsumowanie",
+    "stresc",
+    "streszcz",
 )
 FOLLOWUP_TOPIC_STOPWORDS = {
     "podsumuj",
@@ -75,6 +82,18 @@ FOLLOWUP_TOPIC_STOPWORDS = {
     "mowilas",
     "zdaniach",
     "dwoch",
+}
+TOPIC_SUMMARY_GENERIC_TERMS = {
+    "podsumuj",
+    "podsumowanie",
+    "stresc",
+    "streszcz",
+    "informacje",
+    "najwazniejsze",
+    "zdaniach",
+    "dwoch",
+    "material",
+    "materialu",
 }
 META_INTENT_MARKERS = (
     "od teraz",
@@ -313,6 +332,12 @@ class ChatService:
         retrieved_count = len(retrieved_chunks)
         best_score = max((chunk.score for chunk in retrieved_chunks), default=0.0)
         summary_followup = _is_followup_summary_request(user_text)
+        topic_summary_request = _is_topic_summary_request(
+            user_text=user_text,
+            phrase_norm=retrieval.phrase_norm,
+            main_keyword=retrieval.main_keyword,
+            keywords=retrieval.keywords,
+        )
         history_source_ids = _history_source_chunk_ids_ordered(
             history_messages=history_before_current,
             n_turns=self.config.n_turns,
@@ -320,10 +345,10 @@ class ChatService:
         followup_has_history_evidence = bool(history_source_ids)
         ambiguous_followup_without_history = summary_followup and not followup_has_history_evidence
         has_context = retrieved_count > 0 and best_score >= self.config.similarity_threshold
-        if ambiguous_followup_without_history or (
-            has_context and not retrieval.query_evidence and not summary_followup
-        ):
+        if ambiguous_followup_without_history:
             has_context = False
+        elif has_context and not retrieval.query_evidence and not summary_followup:
+            has_context = topic_summary_request
         elif (
             not has_context
             and summary_followup
@@ -379,6 +404,8 @@ class ChatService:
                 main_keyword=retrieval.main_keyword,
                 keywords=retrieval.keywords,
             )[:MAX_CONTEXT_CHUNKS]
+            if topic_summary_request and not context_chunks:
+                context_chunks = retrieved_chunks[:MAX_CONTEXT_CHUNKS]
             if summary_followup and followup_focus_terms:
                 context_chunks = _sort_chunks_by_entity_density(
                     context_chunks,
@@ -1164,6 +1191,47 @@ def _limit_to_sentences(content: str, limit: int) -> str:
 def _is_followup_summary_request(user_text: str) -> bool:
     normalized = normalize_for_match(user_text)
     return any(marker in normalized for marker in SUMMARY_FOLLOWUP_MARKERS)
+
+
+def _is_topic_summary_request(
+    *,
+    user_text: str,
+    phrase_norm: str | None,
+    main_keyword: str | None,
+    keywords: list[str],
+) -> bool:
+    normalized = normalize_for_match(user_text)
+    if _is_followup_summary_request(user_text):
+        return False
+    if not any(marker in normalized for marker in SUMMARY_TOPIC_MARKERS):
+        return False
+
+    if phrase_norm:
+        phrase_tokens = re.findall(r"[a-z0-9]+", phrase_norm)
+        if len(phrase_tokens) >= 2:
+            return True
+
+    if main_keyword and not _is_generic_topic_summary_term(main_keyword):
+        return True
+
+    topic_terms = [
+        term
+        for term in _extract_followup_topic_terms(user_text)
+        if not _is_generic_topic_summary_term(term)
+    ]
+    if len(topic_terms) >= 2:
+        return True
+
+    return any(not _is_generic_topic_summary_term(keyword) for keyword in keywords)
+
+
+def _is_generic_topic_summary_term(token: str) -> bool:
+    normalized = normalize_for_match(token)
+    if not normalized:
+        return True
+    if normalized in TOPIC_SUMMARY_GENERIC_TERMS:
+        return True
+    return normalized.startswith(("podsum", "stresz", "informac"))
 
 
 def _build_followup_without_history_response(user_text: str) -> str:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from types import MethodType, SimpleNamespace
 
@@ -565,3 +566,56 @@ def test_followup_summary_without_history_returns_clarifying_no_context() -> Non
     assert len(reply.sources) == 0
     assert reply.config_fingerprint["retrieval_summary"]["has_context"] is False
     assert fake_ollama.prompts == []
+
+
+def test_topic_summary_with_entity_keeps_context_even_if_query_evidence_false() -> None:
+    evidence = RetrievedChunk(
+        chunk_id="c-wojciech-topic",
+        source_file="historia.pdf",
+        page=23,
+        text=(
+            "Święty Wojciech był biskupem praskim i misjonarzem. "
+            "Zginął śmiercią męczeńską podczas misji."
+        ),
+        score=1.0,
+    )
+    retrieval_bundle = RetrievalBundle(
+        final_chunks=[evidence],
+        candidates=[],
+        keywords=["podsumuj", "swietego", "wojciecha"],
+        main_keyword="podsumuj",
+        phrase_norm=None,
+        query_evidence=False,
+        lexical_fallback_used=False,
+    )
+    service, _, _ = _build_service(
+        generated=(
+            "Święty Wojciech był biskupem i misjonarzem. "
+            "Zginął śmiercią męczeńską. Czy to wyjaśnienie jest dla Ciebie zrozumiałe?"
+        ),
+        retrieval_bundle=retrieval_bundle,
+    )
+    service.persistence.thread_state.get_preferences = (
+        lambda _thread_id: {
+            "max_sentences": 2,
+            "ask_check_question": False,
+            "answer_style": "short",
+            "style_short": True,
+        }
+    )
+    service.persistence.thread_state.upsert_preferences = lambda **_: None
+
+    reply = service.respond(
+        thread_id="thread-topic-summary",
+        user_text="Podsumuj w 2 zdaniach Świętego Wojciecha.",
+    )
+
+    assert "Nie wiem na podstawie dostarczonych materiałów." not in reply.content
+    assert len(reply.sources) >= 1
+    assert reply.config_fingerprint["retrieval_summary"]["has_context"] is True
+    assert "Sprawdź się:" not in reply.content
+    assert "Czy to wyjaśnienie jest dla Ciebie zrozumiałe?" not in reply.content
+
+    body = reply.content.split("\n\n[Źródło:", 1)[0]
+    sentence_count = len([part for part in re.split(r"(?<=[.!?])\s+", body) if part.strip()])
+    assert sentence_count <= 2
