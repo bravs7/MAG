@@ -67,6 +67,10 @@ uv run python -m app.preflight_questions --questions eval/questions_pl.jsonl
 uv run python -m app.eval_chat --questions eval/questions_pl.jsonl --seed 1234 --timeout-seconds 90 --temperature 0.0 --top-p 1.0
 ```
 
+W CLI dostępne są też slash-komendy preferencji nauczyciela:
+`/normal`, `/short`, `/extended`, `/prefs`, `/check on|off`, `/sentences N` (1-20), `/help`.
+Przykład: ustaw krótki styl i wyłącz pytanie kontrolne: `/short` + `/check off`.
+
 ## Quality gate (clean env)
 ```bash
 # recreate environment from scratch

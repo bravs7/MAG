@@ -127,6 +127,7 @@ STYLE_FACT_SENTENCE_CAP = {
     "short": 2,
     "extended": 8,
 }
+MAX_PREFERENCE_SENTENCES = 20
 CHECK_QUESTION_PATTERNS = (
     re.compile(r"^czy\s+to\s+wyjasnienie\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
     re.compile(r"^czy\s+to\s+jest\s+dla\s+ciebie\s+zrozumiale$"),
@@ -169,6 +170,33 @@ class ChatService:
     def list_threads(self) -> list[dict[str, str | None]]:
         return self.persistence.threads.list_threads()
 
+    def get_thread_preferences(self, thread_id: str) -> dict[str, object]:
+        raw_preferences: dict[str, object] = {}
+        if hasattr(self.persistence.thread_state, "get_preferences"):
+            raw_preferences = self.persistence.thread_state.get_preferences(thread_id)
+        return _normalize_thread_preferences(raw_preferences)
+
+    def update_thread_preferences(
+        self,
+        *,
+        thread_id: str,
+        updates: dict[str, object],
+    ) -> dict[str, object]:
+        current = self.get_thread_preferences(thread_id)
+        merged = dict(current)
+        merged.update(updates)
+        normalized = _normalize_thread_preferences(merged)
+        self.persistence.threads.upsert_thread(thread_id)
+        if hasattr(self.persistence.thread_state, "upsert_preferences"):
+            self.persistence.thread_state.upsert_preferences(
+                thread_id=thread_id,
+                preferences=normalized,
+            )
+        return normalized
+
+    def format_thread_preferences(self, thread_id: str) -> str:
+        return _format_preferences_response(self.get_thread_preferences(thread_id))
+
     def respond(
         self,
         thread_id: str,
@@ -192,10 +220,7 @@ class ChatService:
         # Exclude current user input from recent history section.
         history_before_current = all_messages[:-1]
 
-        raw_preferences: dict[str, object] = {}
-        if hasattr(self.persistence.thread_state, "get_preferences"):
-            raw_preferences = self.persistence.thread_state.get_preferences(thread_id)
-        thread_preferences = _normalize_thread_preferences(raw_preferences)
+        thread_preferences = self.get_thread_preferences(thread_id)
         intent = _classify_intent(user_text)
         if intent == "META":
             meta_response, updated_preferences = _handle_meta_request(
@@ -763,7 +788,7 @@ def _normalize_thread_preferences(preferences: dict[str, object] | None) -> dict
     max_sentences: int | None = None
     raw_max = payload.get("max_sentences")
     if isinstance(raw_max, int) and raw_max > 0:
-        max_sentences = min(raw_max, 6)
+        max_sentences = min(raw_max, MAX_PREFERENCE_SENTENCES)
 
     ask_check_question = True
     raw_ask_check = payload.get("ask_check_question")
@@ -945,7 +970,7 @@ def _extract_max_sentences(normalized_text: str) -> int | None:
             continue
         value = int(match.group(1))
         if value > 0:
-            return min(value, 6)
+            return min(value, MAX_PREFERENCE_SENTENCES)
     return None
 
 
